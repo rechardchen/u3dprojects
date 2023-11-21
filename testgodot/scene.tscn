@@ -41,8 +41,14 @@ shape = SubResource("BoxShape3D_t37a4")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0581082, 0)
 script = ExtResource("2_htsm4")
 
-[node name="CameraControl" type="Node3D" parent="."]
+[node name="CameraControl" type="Node3D" parent="." groups=["CameraControl"]]
 script = ExtResource("2_mhf2u")
 
-[node name="Camera3D" type="Camera3D" parent="CameraControl"]
+[node name="SpringArm3D" type="SpringArm3D" parent="CameraControl"]
+spring_length = 5.0
+
+[node name="Camera3D" type="Camera3D" parent="CameraControl/SpringArm3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.52495, 3.18555)
+
+[node name="LookAt" type="Node3D" parent="CameraControl"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.60849, -3.48008)
