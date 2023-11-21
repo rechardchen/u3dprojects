@@ -1,0 +1,48 @@
+[gd_scene load_steps=8 format=3 uid="uid://cwsyc3unh405j"]
+
+[ext_resource type="PackedScene" uid="uid://nsuivtt2sc7v" path="res://character.tscn" id="1_xa08s"]
+[ext_resource type="Script" path="res://character.gd" id="2_htsm4"]
+[ext_resource type="Script" path="res://CameraControl.gd" id="2_mhf2u"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_mb18y"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_skjpj"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_270xo"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_t37a4"]
+
+[node name="Node3D" type="Node3D"]
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.866023, -0.433016, 0.250001, 0, 0.499998, 0.866027, -0.500003, 0.749999, -0.43301, 0, 0, 0)
+shadow_enabled = true
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
+transform = Transform3D(4, 0, 0, 0, 4, 0, 0, 0, 8, -7.46478, 0.900415, -0.802231)
+mesh = SubResource("BoxMesh_mb18y")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D2"]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D2/StaticBody3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.52995e-06, -0.00523588, 7.79033e-05)
+shape = SubResource("BoxShape3D_skjpj")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+transform = Transform3D(100, 0, 0, 0, 0.1, 0, 0, 0, 100, 0, 0, 0)
+mesh = SubResource("BoxMesh_270xo")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D"]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D/StaticBody3D"]
+shape = SubResource("BoxShape3D_t37a4")
+
+[node name="character" parent="." groups=["player"] instance=ExtResource("1_xa08s")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0581082, 0)
+script = ExtResource("2_htsm4")
+
+[node name="CameraControl" type="Node3D" parent="."]
+script = ExtResource("2_mhf2u")
+
+[node name="Camera3D" type="Camera3D" parent="CameraControl"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.52495, 3.18555)
