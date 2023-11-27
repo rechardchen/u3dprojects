@@ -23,6 +23,8 @@ transform = Transform3D(4, 0, 0, 0, 4, 0, 0, 0, 8, -7.46478, 0.900415, -0.802231
 mesh = SubResource("BoxMesh_mb18y")
 
 [node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D2"]
+collision_layer = 3
+collision_mask = 3
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D2/StaticBody3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.52995e-06, -0.00523588, 7.79033e-05)
@@ -33,6 +35,8 @@ transform = Transform3D(100, 0, 0, 0, 0.1, 0, 0, 0, 100, 0, 0, 0)
 mesh = SubResource("BoxMesh_270xo")
 
 [node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D"]
+collision_layer = 3
+collision_mask = 3
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D/StaticBody3D"]
 shape = SubResource("BoxShape3D_t37a4")
@@ -45,6 +49,7 @@ script = ExtResource("2_htsm4")
 script = ExtResource("2_mhf2u")
 
 [node name="SpringArm3D" type="SpringArm3D" parent="CameraControl"]
+collision_mask = 2
 spring_length = 5.0
 
 [node name="Camera3D" type="Camera3D" parent="CameraControl/SpringArm3D"]
