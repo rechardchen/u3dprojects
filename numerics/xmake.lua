@@ -1,8 +1,9 @@
-add_rules("mode.debug", "mode.release")
+add_rules("mode.debug", "mode.release", "mode.releasedbg")
 
 target("prefixsum")
     set_kind("binary")
     add_files("src/prefixsum.cu")
+    add_headerfiles("src/timer.h")
     add_cugencodes("native")
     add_cugencodes("compute_50")
 target_end()
