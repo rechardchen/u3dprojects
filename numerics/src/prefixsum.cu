@@ -5,9 +5,20 @@
 #include <iostream>
 #include "timer.h"
 
-#define SECTION_SIZE 1024
+//[TODO]
+//0.performance profile with nsight
+//1.optimize shared memory bank conflict
+//2.do more work per thread
 
-//kogge-Stone scan kernel
+enum Algo
+{
+    KoggeStone,
+    BrentKung
+};
+
+#define THREAD_BLOCK_SIZE 1024
+
+//kogge-Stone scan kernel(one pass)
 __global__ void ks_scan(int* array, uint64_t len, int* blockFlags, int* scanValues)
 {
     __shared__ int sBid;
@@ -20,13 +31,15 @@ __global__ void ks_scan(int* array, uint64_t len, int* blockFlags, int* scanValu
     }
     __syncthreads();
 
-    int i1 = sBid * SECTION_SIZE + threadIdx.x;
+    int i1 = sBid * THREAD_BLOCK_SIZE + threadIdx.x;
     localSum[threadIdx.x] = i1 < len ? array[i1]:0;
-    localSum[threadIdx.x + SECTION_SIZE] = 0;
+    localSum[threadIdx.x + THREAD_BLOCK_SIZE] = 0;
 
     int pout = 0, pin = 1;
     //Kogge-Stone
-    for (unsigned int stride = 1; stride <= blockDim.x; stride *= 2)
+
+#pragma unroll
+    for (unsigned int stride = 1; stride < THREAD_BLOCK_SIZE; stride *= 2)
     {
         __syncthreads();
 
@@ -35,11 +48,11 @@ __global__ void ks_scan(int* array, uint64_t len, int* blockFlags, int* scanValu
 
         if (threadIdx.x >= stride)
         {
-            localSum[pout*SECTION_SIZE + threadIdx.x] = localSum[pin*SECTION_SIZE + threadIdx.x] + localSum[pin*SECTION_SIZE + threadIdx.x - stride];
+            localSum[pout*THREAD_BLOCK_SIZE + threadIdx.x] = localSum[pin*THREAD_BLOCK_SIZE + threadIdx.x] + localSum[pin*THREAD_BLOCK_SIZE + threadIdx.x - stride];
         }
         else
         {
-            localSum[pout*SECTION_SIZE + threadIdx.x] = localSum[pin*SECTION_SIZE + threadIdx.x];
+            localSum[pout*THREAD_BLOCK_SIZE + threadIdx.x] = localSum[pin*THREAD_BLOCK_SIZE + threadIdx.x];
         }
     }
 
@@ -51,11 +64,11 @@ __global__ void ks_scan(int* array, uint64_t len, int* blockFlags, int* scanValu
 
         if (sBid > 0)
         {
-            scanValues[sBid] = localSum[(pout+1)*SECTION_SIZE - 1] + scanValues[sBid - 1];
+            scanValues[sBid] = localSum[(pout+1)*THREAD_BLOCK_SIZE - 1] + scanValues[sBid - 1];
         }
         else
         {
-            scanValues[sBid] = localSum[(pout+1)*SECTION_SIZE  -1];
+            scanValues[sBid] = localSum[(pout+1)*THREAD_BLOCK_SIZE  -1];
         }
 
         __threadfence();
@@ -68,18 +81,95 @@ __global__ void ks_scan(int* array, uint64_t len, int* blockFlags, int* scanValu
     __syncthreads();
     if (sBid > 0)
     {
-        if (i1 < len) array[i1] = localSum[threadIdx.x + pout*SECTION_SIZE] + scanValues[sBid - 1];
+        if (i1 < len) array[i1] = localSum[threadIdx.x + pout*THREAD_BLOCK_SIZE] + scanValues[sBid - 1];
     }
     else
     {
-        if (i1 < len) array[i1] = localSum[threadIdx.x + pout*SECTION_SIZE];
+        if (i1 < len) array[i1] = localSum[threadIdx.x + pout*THREAD_BLOCK_SIZE];
     }
 }
 
-void parallel_prefixsum(int* array, uint64_t len)
+//brent-kung
+__global__ void bk_scan(int* array, uint64_t len, int* blockFlags, int* scanValues)
 {
-    const int BlockSize = SECTION_SIZE;
-    const int NumBlocks = (len + SECTION_SIZE - 1) / SECTION_SIZE;
+    const int SECTION_SIZE = THREAD_BLOCK_SIZE * 2;
+    __shared__ int sBid;
+    __shared__ int localSum[SECTION_SIZE];
+
+    if (threadIdx.x == 0)
+    {
+        sBid = atomicAdd(&blockFlags[0], 1);
+    }
+    __syncthreads();
+
+    int idx1 = sBid * SECTION_SIZE + threadIdx.x;
+    int idx2 = sBid * SECTION_SIZE + THREAD_BLOCK_SIZE + threadIdx.x;
+    localSum[threadIdx.x] = idx1 < len ? array[idx1] : 0;
+    localSum[threadIdx.x + THREAD_BLOCK_SIZE] = idx2 < len ? array[idx2] : 0;
+
+    //reduction stage
+#pragma unroll
+    for (int stride = 1; stride <= THREAD_BLOCK_SIZE; stride *= 2)
+    {
+        __syncthreads();
+        int index = 2 * stride * (threadIdx.x + 1) - 1;
+        if (index < SECTION_SIZE)
+        {
+            localSum[index] += localSum[index - stride];
+        }
+    }
+
+    //reverse distribution stage
+#pragma unroll
+    for (int stride = THREAD_BLOCK_SIZE/2; stride > 0; stride /= 2)
+    {
+        __syncthreads();
+        int index = 2 * stride * (threadIdx.x + 1) - 1;
+        if (index + stride < SECTION_SIZE)
+        {
+            localSum[index + stride] += localSum[index];
+        }
+    }
+
+    __syncthreads();
+    if (threadIdx.x == 0)
+    {
+        if (sBid > 0)
+            while (atomicAdd(&blockFlags[sBid], 0) == 0);
+
+        if (sBid > 0)
+        {
+            scanValues[sBid] = localSum[SECTION_SIZE - 1] + scanValues[sBid - 1];
+        }
+        else
+        {
+            scanValues[sBid] = localSum[SECTION_SIZE - 1];
+        }
+
+        __threadfence();
+        if (sBid < gridDim.x - 1)
+        {
+            atomicAdd(&blockFlags[sBid + 1], 1);
+        }
+    }
+
+    __syncthreads();
+    if (sBid > 0)
+    {
+        if (idx1 < len) array[idx1] = localSum[threadIdx.x] + scanValues[sBid - 1];
+        if (idx2 < len) array[idx2] = localSum[threadIdx.x + THREAD_BLOCK_SIZE] + scanValues[sBid - 1];
+    }
+    else
+    {
+        if (idx1 < len) array[idx1] = localSum[threadIdx.x];
+        if (idx2 < len) array[idx2] = localSum[threadIdx.x + THREAD_BLOCK_SIZE];
+    }
+}
+
+void parallel_prefixsum(int* array, uint64_t len, Algo algo)
+{
+    const int BlockSize = (algo == KoggeStone) ? THREAD_BLOCK_SIZE : (2 * THREAD_BLOCK_SIZE);
+    const int NumBlocks = (len + BlockSize - 1) / BlockSize;
 
     int* d_array;
     cudaMalloc((void**)&d_array, len * sizeof(int));
@@ -99,8 +189,10 @@ void parallel_prefixsum(int* array, uint64_t len)
     //cudaMallocAsync((void**)&d_scanValues, NumBlocks * sizeof(int), 0);
     //cudaMemsetAsync(d_scanValues, 0, NumBlocks * sizeof(int));
 
-    //k-s scan, double buffer shared memory
-    ks_scan << <NumBlocks, BlockSize, 2 * sizeof(int) * SECTION_SIZE >> > (d_array, len, d_blockFlags, d_scanValues);
+    if (algo == KoggeStone)
+        ks_scan << <NumBlocks, THREAD_BLOCK_SIZE, 2 * sizeof(int) * THREAD_BLOCK_SIZE >> > (d_array, len, d_blockFlags, d_scanValues);
+    else
+        bk_scan << < NumBlocks, THREAD_BLOCK_SIZE >> > (d_array, len, d_blockFlags, d_scanValues);
 
     cudaMemcpy(array, d_array, len * sizeof(int), cudaMemcpyDeviceToHost);
     cudaFree(d_array);
@@ -116,6 +208,7 @@ void prefixsum(int* array, uint64_t len)
     int sum = 0;
     for (uint64_t i = 0; i < len; i++)
     {
+        //if (block && (i % SECTION_SIZE) == 0) sum = 0;
         sum += array[i];
         array[i] = sum;
     }
@@ -128,7 +221,7 @@ int main(int argc, char **argv)
 
     const int ArraySize = 100000000;
     //const int ArraySize = 16384;
-    //const int ArraySize = 100;
+    //const int ArraySize = 2048;
     int* rawArray = (int*)malloc(ArraySize * sizeof(int));
     for (int i = 0;i < ArraySize;i++)
     {
@@ -143,7 +236,7 @@ int main(int argc, char **argv)
     std::cout << "CPU prefixsum time: " << timer.microseconds() << std::endl;
 
     timer.start();
-    parallel_prefixsum(rawArray1, ArraySize);
+    parallel_prefixsum(rawArray1, ArraySize, BrentKung);
     timer.stop();
     std::cout << "GPU prefixsum time: " << timer.microseconds() << std::endl;
 
