@@ -2,6 +2,7 @@
 #include <GLFW/glfw3.h>
 #include <vector>
 #include <iostream>
+#include <optional>
 using namespace std;
 
 
@@ -26,6 +27,16 @@ public:
         cleanUp();
     }
 private:
+
+    struct QueueFamilyIndices
+    {
+        std::optional<uint32_t> graphicsFamily;
+        bool isComplete() const
+        {
+            return graphicsFamily.has_value();
+        }
+    };
+
     void initVk()
     {
         glfwInit();
@@ -36,6 +47,7 @@ private:
         m_window = glfwCreateWindow(WIN_WIDTH, WIN_HEIGHT, "Vk Simple", nullptr, nullptr);
 
         createInstance();
+        pickPhysicalDevice();
     }
 
     void mainLoop()
@@ -55,10 +67,44 @@ private:
     }
 
     void createInstance();
+    void pickPhysicalDevice();
+    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice);
+
+    bool isDeviceSuitable(VkPhysicalDevice device)
+    {
+        VkPhysicalDeviceProperties deviceProperties;
+        vkGetPhysicalDeviceProperties(device, &deviceProperties);
+        auto indices = findQueueFamilies(device);
+
+        return deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU && indices.isComplete();
+    }
 
     GLFWwindow* m_window = nullptr;
     VkInstance m_instance;
+    VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
+    VkDevice m_device;
 };
+
+SimpleApp::QueueFamilyIndices SimpleApp::findQueueFamilies(VkPhysicalDevice device)
+{
+    QueueFamilyIndices indices;
+
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+    for (uint32_t i = 0;i < queueFamilyCount; ++i)
+    {
+        if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+        {
+            indices.graphicsFamily = i;
+            break;
+        }
+    }
+
+    return indices;
+}
 
 void SimpleApp::createInstance()
 {
@@ -132,6 +178,29 @@ void SimpleApp::createInstance()
         throw std::runtime_error("Failed to create instance!");
     }
 }
+
+void SimpleApp::pickPhysicalDevice()
+{
+    uint32_t physicalDeviceCount = 0;
+    vkEnumeratePhysicalDevices(m_instance, &physicalDeviceCount, nullptr);
+    std::vector<VkPhysicalDevice> physicalDevices(physicalDeviceCount);
+    vkEnumeratePhysicalDevices(m_instance, &physicalDeviceCount, physicalDevices.data());
+
+    for(auto device: physicalDevices)
+    {
+        if (isDeviceSuitable(device))
+        {
+            m_physicalDevice = device;
+            break;
+        }
+    }
+
+    if (m_physicalDevice == VK_NULL_HANDLE)
+    {
+        throw std::runtime_error("failed to pick suitable device!");
+    }
+}
+
 
 int main(int argc, char** argv)
 {
