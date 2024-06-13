@@ -48,6 +48,7 @@ private:
 
         createInstance();
         pickPhysicalDevice();
+        createLogicalDevice();
     }
 
     void mainLoop()
@@ -60,6 +61,7 @@ private:
 
     void cleanUp()
     {
+        vkDestroyDevice(m_device, nullptr);
         vkDestroyInstance(m_instance, nullptr);
 
         glfwDestroyWindow(m_window);
@@ -68,6 +70,7 @@ private:
 
     void createInstance();
     void pickPhysicalDevice();
+    void createLogicalDevice();
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice);
 
     bool isDeviceSuitable(VkPhysicalDevice device)
@@ -83,6 +86,7 @@ private:
     VkInstance m_instance;
     VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
     VkDevice m_device;
+    VkQueue m_graphicsQueue;
 };
 
 SimpleApp::QueueFamilyIndices SimpleApp::findQueueFamilies(VkPhysicalDevice device)
@@ -177,6 +181,34 @@ void SimpleApp::createInstance()
     {
         throw std::runtime_error("Failed to create instance!");
     }
+}
+
+void SimpleApp::createLogicalDevice()
+{
+    auto queueIndices = findQueueFamilies(m_physicalDevice);
+
+    VkDeviceQueueCreateInfo queueCreateInfo{};
+    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queueCreateInfo.queueFamilyIndex = queueIndices.graphicsFamily.value();
+    queueCreateInfo.queueCount = 1;
+    float queuePriority = 1.f;
+    queueCreateInfo.pQueuePriorities = &queuePriority;
+
+    VkPhysicalDeviceFeatures deviceFeatures{};
+
+    VkDeviceCreateInfo deviceInfo{};
+    deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    deviceInfo.pQueueCreateInfos = &queueCreateInfo;
+    deviceInfo.queueCreateInfoCount = 1;
+    deviceInfo.pEnabledFeatures = &deviceFeatures;
+    deviceInfo.enabledExtensionCount = 0;
+
+    if (vkCreateDevice(m_physicalDevice, &deviceInfo, nullptr, &m_device) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to create logical device!");
+    }
+
+    vkGetDeviceQueue(m_device, queueIndices.graphicsFamily.value(), 0, &m_graphicsQueue);
 }
 
 void SimpleApp::pickPhysicalDevice()
