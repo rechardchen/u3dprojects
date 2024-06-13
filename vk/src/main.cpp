@@ -31,9 +31,10 @@ private:
     struct QueueFamilyIndices
     {
         std::optional<uint32_t> graphicsFamily;
+        std::optional<uint32_t> presentFamily;
         bool isComplete() const
         {
-            return graphicsFamily.has_value();
+            return graphicsFamily.has_value() && presentFamily.has_value();
         }
     };
 
@@ -47,6 +48,7 @@ private:
         m_window = glfwCreateWindow(WIN_WIDTH, WIN_HEIGHT, "Vk Simple", nullptr, nullptr);
 
         createInstance();
+        createSurface();
         pickPhysicalDevice();
         createLogicalDevice();
     }
@@ -69,6 +71,7 @@ private:
     }
 
     void createInstance();
+    void createSurface();
     void pickPhysicalDevice();
     void createLogicalDevice();
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice);
@@ -87,6 +90,8 @@ private:
     VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
     VkDevice m_device;
     VkQueue m_graphicsQueue;
+    VkQueue m_presentQueue;
+    VkSurfaceKHR m_surface;
 };
 
 SimpleApp::QueueFamilyIndices SimpleApp::findQueueFamilies(VkPhysicalDevice device)
@@ -103,7 +108,14 @@ SimpleApp::QueueFamilyIndices SimpleApp::findQueueFamilies(VkPhysicalDevice devi
         if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
         {
             indices.graphicsFamily = i;
-            break;
+            //break;
+        }
+
+        VkBool32 presentSupport = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, m_surface, &presentSupport);
+        if (presentSupport)
+        {
+            indices.presentFamily = i;
         }
     }
 
@@ -187,19 +199,26 @@ void SimpleApp::createLogicalDevice()
 {
     auto queueIndices = findQueueFamilies(m_physicalDevice);
 
-    VkDeviceQueueCreateInfo queueCreateInfo{};
-    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueCreateInfo.queueFamilyIndex = queueIndices.graphicsFamily.value();
-    queueCreateInfo.queueCount = 1;
+    std::vector<uint32_t> uniqueQueueFamilies = { queueIndices.graphicsFamily.value(), queueIndices.presentFamily.value() };
+
+    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     float queuePriority = 1.f;
-    queueCreateInfo.pQueuePriorities = &queuePriority;
+    for (auto queueFamily: uniqueQueueFamilies)
+    {
+        VkDeviceQueueCreateInfo queueCreateInfo{};
+        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfo.queueFamilyIndex = queueFamily;
+        queueCreateInfo.queueCount = 1;
+        queueCreateInfo.pQueuePriorities = &queuePriority;
+        queueCreateInfos.push_back(queueCreateInfo);
+    }
 
     VkPhysicalDeviceFeatures deviceFeatures{};
 
     VkDeviceCreateInfo deviceInfo{};
     deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    deviceInfo.pQueueCreateInfos = &queueCreateInfo;
-    deviceInfo.queueCreateInfoCount = 1;
+    deviceInfo.pQueueCreateInfos = queueCreateInfos.data();
+    deviceInfo.queueCreateInfoCount = queueCreateInfos.size();
     deviceInfo.pEnabledFeatures = &deviceFeatures;
     deviceInfo.enabledExtensionCount = 0;
 
@@ -209,6 +228,15 @@ void SimpleApp::createLogicalDevice()
     }
 
     vkGetDeviceQueue(m_device, queueIndices.graphicsFamily.value(), 0, &m_graphicsQueue);
+    vkGetDeviceQueue(m_device, queueIndices.presentFamily.value(), 0, &m_presentQueue);
+}
+
+void SimpleApp::createSurface()
+{
+    if (glfwCreateWindowSurface(m_instance, m_window, nullptr, &m_surface) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to create window surface!");
+    }
 }
 
 void SimpleApp::pickPhysicalDevice()
