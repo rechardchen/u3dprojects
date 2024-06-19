@@ -65,6 +65,7 @@ private:
         createImageViews();
         createRenderPass();
         createGraphicsPipeline();
+        createFramebuffers();
     }
 
     void mainLoop()
@@ -77,6 +78,10 @@ private:
 
     void cleanUp()
     {
+        for (size_t i = 0;i < m_swapchainFramebuffers.size(); ++i)
+        {
+            vkDestroyFramebuffer(m_device, m_swapchainFramebuffers[i], nullptr);
+        }
         vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
         vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
         vkDestroyRenderPass(m_device, m_renderPass, nullptr);
@@ -101,6 +106,7 @@ private:
     void createImageViews();
     void createRenderPass();
     void createGraphicsPipeline();
+    void createFramebuffers();
 
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice);
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats)
@@ -252,6 +258,7 @@ private:
     VkFormat m_swapchainImageFormat;
     VkExtent2D m_swapchainExtent;
     std::vector<VkImageView> m_swapchainImageViews;
+    std::vector<VkFramebuffer> m_swapchainFramebuffers;
 
     VkRenderPass m_renderPass;
     VkPipelineLayout m_pipelineLayout;
@@ -653,6 +660,31 @@ void SimpleApp::createGraphicsPipeline()
     vkDestroyShaderModule(m_device, vsShaderModule, nullptr);
     vkDestroyShaderModule(m_device, fsShaderModule, nullptr);
 }
+
+void SimpleApp::createFramebuffers()
+{
+    m_swapchainFramebuffers.resize(m_swapchainImageViews.size());
+
+    for (size_t i = 0;i < m_swapchainFramebuffers.size(); ++i)
+    {
+        VkImageView attachments[] = { m_swapchainImageViews[i] };
+
+        VkFramebufferCreateInfo framebufferInfo{};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = m_renderPass;
+        framebufferInfo.attachmentCount = 1;
+        framebufferInfo.pAttachments = attachments;
+        framebufferInfo.width = m_swapchainExtent.width;
+        framebufferInfo.height = m_swapchainExtent.height;
+        framebufferInfo.layers = 1;
+
+        if (vkCreateFramebuffer(m_device, &framebufferInfo, nullptr, &m_swapchainFramebuffers[i]) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create framebuffer!");
+        }
+    }
+}
+
 
 void SimpleApp::createSurface()
 {
