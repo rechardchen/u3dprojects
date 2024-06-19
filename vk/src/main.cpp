@@ -66,6 +66,8 @@ private:
         createRenderPass();
         createGraphicsPipeline();
         createFramebuffers();
+        createCommandPool();
+        createCommandBuffer();
     }
 
     void mainLoop()
@@ -78,6 +80,7 @@ private:
 
     void cleanUp()
     {
+        vkDestroyCommandPool(m_device, m_commandPool, nullptr);
         for (size_t i = 0;i < m_swapchainFramebuffers.size(); ++i)
         {
             vkDestroyFramebuffer(m_device, m_swapchainFramebuffers[i], nullptr);
@@ -107,7 +110,10 @@ private:
     void createRenderPass();
     void createGraphicsPipeline();
     void createFramebuffers();
+    void createCommandPool();
+    void createCommandBuffer();
 
+    void recordCommandBuffer(VkCommandBuffer,uint32_t);
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice);
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats)
     {
@@ -263,6 +269,9 @@ private:
     VkRenderPass m_renderPass;
     VkPipelineLayout m_pipelineLayout;
     VkPipeline m_graphicsPipeline;
+
+    VkCommandPool  m_commandPool;
+    VkCommandBuffer m_commandBuffer;
 
     const std::vector<const char*> m_deviceExtensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 };
@@ -682,6 +691,79 @@ void SimpleApp::createFramebuffers()
         {
             throw std::runtime_error("failed to create framebuffer!");
         }
+    }
+}
+
+void SimpleApp::createCommandPool()
+{
+    auto queueFamily = findQueueFamilies(m_physicalDevice);
+
+    VkCommandPoolCreateInfo commandPoolInfo{};
+    commandPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    commandPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    commandPoolInfo.queueFamilyIndex = queueFamily.graphicsFamily.value();
+
+    if (vkCreateCommandPool(m_device, &commandPoolInfo,nullptr, &m_commandPool )!= VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to create vulkan");
+    }
+}
+
+void SimpleApp::createCommandBuffer()
+{
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = m_commandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = 1;
+
+    if (vkAllocateCommandBuffers(m_device,&allocInfo,&m_commandBuffer) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to create command buffer");
+    }
+}
+
+void SimpleApp::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
+{
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.pInheritanceInfo = nullptr;
+    beginInfo.flags = 0;
+
+    if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to begin record command buffer!");
+    }
+
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.framebuffer = m_swapchainFramebuffers[imageIndex];
+    renderPassInfo.renderArea.offset = { 0,0 };
+    renderPassInfo.renderArea.extent = m_swapchainExtent;
+    VkClearValue clearColor = { {{0,0,0,1}} };
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
+    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
+    VkViewport viewport{};
+    viewport.x = viewport.y = 0.f;
+    viewport.width = (float)m_swapchainExtent.width;
+    viewport.height = (float)m_swapchainExtent.height;
+    viewport.minDepth = 0.f;
+    viewport.maxDepth = 1.f;
+    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+    VkRect2D scissor{};
+    scissor.offset = { 0,0 };
+    scissor.extent = m_swapchainExtent;
+    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    vkCmdEndRenderPass(commandBuffer);
+    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to record command buffer!");
     }
 }
 
