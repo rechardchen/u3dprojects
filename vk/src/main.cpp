@@ -54,7 +54,7 @@ private:
         glfwInit();
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
         m_window = glfwCreateWindow(WIN_WIDTH, WIN_HEIGHT, "Vk Simple", nullptr, nullptr);
 
@@ -82,8 +82,23 @@ private:
         vkDeviceWaitIdle(m_device);
     }
 
+    void cleanUpSwapchain()
+    {
+        for (size_t i = 0;i < m_swapchainFramebuffers.size(); ++i)
+        {
+            vkDestroyFramebuffer(m_device, m_swapchainFramebuffers[i], nullptr);
+        }
+        for (size_t i = 0;i < m_swapchainImageViews.size(); ++i)
+        {
+            vkDestroyImageView(m_device,m_swapchainImageViews[i], nullptr);
+        }
+        vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
+    }
+
     void cleanUp()
     {
+        cleanUpSwapchain();
+
         for (int i = 0;i < MAX_FRAMES_IN_FLIGHT; ++i)
         {
             vkDestroySemaphore(m_device, m_imageAvailableSemaphores[i], nullptr);
@@ -92,18 +107,18 @@ private:
         }
 
         vkDestroyCommandPool(m_device, m_commandPool, nullptr);
-        for (size_t i = 0;i < m_swapchainFramebuffers.size(); ++i)
-        {
-            vkDestroyFramebuffer(m_device, m_swapchainFramebuffers[i], nullptr);
-        }
+        //for (size_t i = 0;i < m_swapchainFramebuffers.size(); ++i)
+        //{
+        //    vkDestroyFramebuffer(m_device, m_swapchainFramebuffers[i], nullptr);
+        //}
         vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
         vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
         vkDestroyRenderPass(m_device, m_renderPass, nullptr);
-        for (size_t i = 0; i < m_swapchainImageViews.size(); ++i)
-        {
-            vkDestroyImageView(m_device, m_swapchainImageViews[i], nullptr);
-        }
-        vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
+        //for (size_t i = 0; i < m_swapchainImageViews.size(); ++i)
+        //{
+        //    vkDestroyImageView(m_device, m_swapchainImageViews[i], nullptr);
+        //}
+        //vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
         vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
         vkDestroyDevice(m_device, nullptr);
         vkDestroyInstance(m_instance, nullptr);
@@ -124,6 +139,7 @@ private:
     void createCommandPool();
     void createCommandBuffer();
     void createSyncObjects();
+    void recreateSwapchain();
 
     void drawFrame();
 
@@ -772,13 +788,38 @@ void SimpleApp::createSyncObjects()
     }
 }
 
+void SimpleApp::recreateSwapchain()
+{
+    std::cout << "SimpleApp::recreateSwapchain is called" << std::endl;
+
+    vkDeviceWaitIdle(m_device);
+
+    cleanUpSwapchain();
+
+    createSwapchain();
+    createImageViews();
+    createFramebuffers();
+}
+
+
 void SimpleApp::drawFrame()
 {
     vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
-    vkResetFences(m_device,1,&m_inFlightFences[m_currentFrame]);
 
     uint32_t imageIndex;
-    vkAcquireNextImageKHR(m_device, m_swapchain, UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], VK_NULL_HANDLE, &imageIndex);
+    VkResult ret = vkAcquireNextImageKHR(m_device, m_swapchain, UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], VK_NULL_HANDLE, &imageIndex);
+    if (ret == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        recreateSwapchain();
+        return;
+    }
+    else if (ret != VK_SUCCESS && ret != VK_SUBOPTIMAL_KHR)
+    {
+        throw std::runtime_error("failed to acquire next image!");
+    }
+
+    vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]);
+
     vkResetCommandBuffer(m_commandBuffers[m_currentFrame], 0);
     recordCommandBuffer(m_commandBuffers[m_currentFrame], imageIndex);
 
@@ -810,10 +851,16 @@ void SimpleApp::drawFrame()
     presentInfo.pImageIndices = &imageIndex;
     presentInfo.pResults = nullptr;
 
-    if (vkQueuePresentKHR(m_presentQueue, &presentInfo) != VK_SUCCESS)
+    ret = vkQueuePresentKHR(m_presentQueue, &presentInfo);
+    if (ret == VK_ERROR_OUT_OF_DATE_KHR || ret == VK_SUBOPTIMAL_KHR)
+    {
+        recreateSwapchain();
+    }
+    else if (ret != VK_SUCCESS)
     {
         throw std::runtime_error("failed to present swapchain image");
     }
+    m_currentFrame = (m_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
 
