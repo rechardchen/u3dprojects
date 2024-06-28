@@ -1,8 +1,8 @@
 add_rules("mode.debug", "mode.release", "mode.releasedbg")
 set_languages("c++17")
 
-add_requires("vulkansdk","glfw")
-add_packages("vulkansdk","glfw")
+add_requires("vulkansdk","glfw","glm")
+add_packages("vulkansdk","glfw","glm")
 
 target("vk")
     set_kind("binary")
